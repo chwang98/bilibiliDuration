@@ -67,9 +67,9 @@
         { label: '不限制', value: 0 },
     ];
 
-    let currentFilterThreshold = 300; // 默认 5 分钟
+    let currentFilterThreshold = 0; // 默认不过滤
 
-    // 创建过滤栏
+    // 创建过滤栏（带重试，确保容器出现后再插入）
     function createFilterBar() {
         if (document.querySelector('.bili-duration-filter-bar')) return;
 
@@ -81,6 +81,7 @@
             gap: '12px',
             padding: '12px 20px',
             fontSize: '14px',
+            flexWrap: 'wrap',
         });
 
         // 标签
@@ -159,11 +160,26 @@
         bar.appendChild(clearBtn);
         bar.appendChild(countHint);
 
-        // 插入到导航标签下方
-        const navTabs = document.querySelector('.nav-tabs');
-        const container = document.querySelector('.popular-container');
-        if (container) {
-            container.insertBefore(bar, container.children[1] || null);
+        // 尝试插入到页面中：先查找 .popular-container，找不到则插入到 .video-card 列表前
+        const tryInsert = () => {
+            const container = document.querySelector('.popular-container');
+            if (container) {
+                // 插入到容器最前面
+                container.insertBefore(bar, container.firstChild);
+                return true;
+            }
+            // 如果容器还没出现，等50ms重试，最多重试20次
+            return false;
+        };
+
+        if (!tryInsert()) {
+            let retries = 0;
+            const interval = setInterval(() => {
+                retries++;
+                if (tryInsert() || retries > 20) {
+                    clearInterval(interval);
+                }
+            }, 50);
         }
     }
 
