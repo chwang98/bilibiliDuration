@@ -24,18 +24,22 @@
         const input = args[0];
         const urlStr = typeof input === 'string' ? input : (input && input.url);
 
-        // 拦截热门视频列表接口
-        if (urlStr && urlStr.includes('/x/web-interface/popular')) {
+        // 拦截热门视频列表接口（综合热门 + 排行榜）
+        const isPopular = urlStr && urlStr.includes('/x/web-interface/popular');
+        const isRanking = urlStr && urlStr.includes('/x/web-interface/ranking/v2');
+        if (isPopular || isRanking) {
             return originalFetch.apply(this, args).then(response => {
                 const clonedResponse = response.clone();
                 clonedResponse.json().then(data => {
-                    if (data.code === 0 && data.data && data.data.list) {
-                        data.data.list.forEach(item => {
+                    const list = isPopular
+                        ? (data.data && data.data.list)
+                        : (data.data && data.data.list);
+                    if (data.code === 0 && Array.isArray(list)) {
+                        list.forEach(item => {
                             if (item.bvid && item.duration != null) {
                                 durationMap[item.bvid] = item.duration;
                             }
                         });
-                        // 给已存在的视频卡片添加时长
                         setTimeout(addDurationToAllCards, 100);
                     }
                 }).catch(() => {});
@@ -190,12 +194,12 @@
             hintEl = document.querySelector('.bili-duration-filter-count');
             if (!hintEl) return;
         }
-        const totalCards = document.querySelectorAll('.video-card').length;
-        const visibleCards = document.querySelectorAll('.video-card[style*="display: none"]');
+        const totalCards = getAllCards().length;
+        const hiddenCards = getAllCards().filter(c => c.style.display === 'none');
         if (currentFilterThreshold === 0) {
             hintEl.textContent = `共 ${totalCards} 个视频`;
         } else {
-            const hidden = visibleCards.length;
+            const hidden = hiddenCards.length;
             hintEl.textContent = `共 ${totalCards} 个视频，已过滤 ${hidden} 个`;
         }
     }
@@ -212,7 +216,7 @@
 
     // 应用过滤：隐藏时长低于阈值的卡片
     function applyFilter() {
-        document.querySelectorAll('.video-card').forEach(card => {
+        getAllCards().forEach(card => {
             if (currentFilterThreshold === 0) {
                 card.style.display = '';
                 return;
@@ -232,6 +236,22 @@
 
     // ========== 时长标签显示 ==========
 
+    // 获取视频卡片的封面容器（两种页面结构不同）
+    function getCoverContainer(card) {
+        if (card.classList.contains('video-card')) {
+            return card.querySelector('.video-card__content');
+        }
+        if (card.classList.contains('rank-item')) {
+            return card.querySelector('.img');
+        }
+        return null;
+    }
+
+    // 获取所有视频卡片（兼容综合热门和排行榜页面）
+    function getAllCards() {
+        return document.querySelectorAll('.video-card, .rank-item');
+    }
+
     // 为单个视频卡片添加时长标签
     function addDurationToCard(card) {
         // 找到视频链接，从中提取 BV 号
@@ -246,7 +266,7 @@
         const duration = durationMap[bvid];
         if (duration == null) return;
 
-        const content = card.querySelector('.video-card__content');
+        const content = getCoverContainer(card);
         if (!content) return;
 
         // 避免重复添加
@@ -281,9 +301,10 @@
 
     // 为所有已存在的视频卡片添加时长标签（不触发过滤，避免 Observer 死循环）
     function addDurationLabels() {
-        document.querySelectorAll('.video-card').forEach(card => {
+        getAllCards().forEach(card => {
             // 只处理还没有时长标签的卡片
-            if (!card.querySelector('.video-card__content .bili-duration-overlay')) {
+            const container = getCoverContainer(card);
+            if (container && !container.querySelector('.bili-duration-overlay')) {
                 addDurationToCard(card);
             }
         });
@@ -318,21 +339,32 @@
             const store = appEl.__vue__ && appEl.__vue__.$store;
             if (!store) return;
             const state = store.state;
-            if (!state || !state.flow) return;
+            if (!state) return;
 
-            // 遍历所有页面（page）的缓存数据
-            Object.keys(state.flow).forEach(key => {
-                if (key.startsWith('getPopularList-')) {
-                    const entry = state.flow[key];
-                    if (entry && entry.result && Array.isArray(entry.result)) {
-                        entry.result.forEach(item => {
-                            if (item.bvid && item.duration != null) {
-                                durationMap[item.bvid] = item.duration;
-                            }
-                        });
+            // 综合热门页面：遍历 flow 中的缓存数据
+            if (state.flow) {
+                Object.keys(state.flow).forEach(key => {
+                    if (key.startsWith('getPopularList-')) {
+                        const entry = state.flow[key];
+                        if (entry && entry.result && Array.isArray(entry.result)) {
+                            entry.result.forEach(item => {
+                                if (item.bvid && item.duration != null) {
+                                    durationMap[item.bvid] = item.duration;
+                                }
+                            });
+                        }
                     }
-                }
-            });
+                });
+            }
+
+            // 排行榜页面：直接从 rankList 获取
+            if (Array.isArray(state.rankList)) {
+                state.rankList.forEach(item => {
+                    if (item.bvid && item.duration != null) {
+                        durationMap[item.bvid] = item.duration;
+                    }
+                });
+            }
         } catch (e) {
             // 静默失败
         }
