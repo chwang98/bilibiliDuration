@@ -2,11 +2,12 @@
 // @name         B站热门视频时长显示
 // @namespace    http://tampermonkey.net/
 // @version      1.0
-// @description  在B站热门视频封面上显示视频时长（从接口获取duration参数）
+// @description  在B站热门视频封面上显示视频时长
 // @author       You
 // @match        https://www.bilibili.com/v/popular/*
 // @run-at       document-start
 // @grant        none
+// @license MIT
 // ==/UserScript==
 
 (function() {
